@@ -2,14 +2,13 @@
 FROM node:16-alpine AS builder
 WORKDIR /app
 
-COPY ./package.json /app/package.json
-COPY ./yarn.lock /app/yarn.lock
+ENV npm_config_build_from_source true
 
-RUN apk add gcc musl-dev libffi-dev python3
-
+RUN apk add make g++ python3 git
 RUN yarn global add node-gyp
 
-ENV CXX g++
+COPY ./package.json /app/package.json
+COPY ./yarn.lock /app/yarn.lock
 
 RUN yarn install --frozen-lockfile
 
@@ -17,33 +16,21 @@ COPY . .
 
 RUN yarn build
 
-# CMD ["node", "./.next/standalone/server.js"]
+FROM node:16-alpine AS runner
+WORKDIR /app
 
-CMD yarn run start
+ENV NODE_ENV production
 
-# FROM node:16-alpine AS runner
-# WORKDIR /app
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nextjs -u 1001
 
-# ENV NODE_ENV production
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/yarn.lock ./yarn.lock
 
-# RUN addgroup -g 1001 -S nodejs
-# RUN adduser -S nextjs -u 1001
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# COPY --from=builder /app/public ./public
-# COPY --from=builder /app/package.json ./package.json
-# COPY --from=builder /app/yarn.lock ./yarn.lock
+USER nextjs
 
-# RUN apk --no-cache --virtual build-dependencies add \
-#     git \
-#     gcc \
-#     && yarn global add node-gyp \
-#     && apk del build-dependencies
-
-# RUN apk add gcc clang
-
-# COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-# COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-
-# USER nextjs
-
-# CMD ["node", "server.js"]
+CMD ["node", "server.js"]
